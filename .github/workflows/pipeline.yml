@@ -1,0 +1,58 @@
+name: DevOps Temperature Converter Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci-cd-pipeline:
+    runs-on: self-hosted
+    steps:
+      - name: Check out Repository Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Local Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Automated Testing Suit
+        run: |
+          python -m pytest test_app.py -v
+
+      - name: Secure Login to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
+
+      - name: Build and Tag New Docker Image
+        run: |
+          IMAGE_TAG="run-${{ github.run_number }}"
+          FULL_IMAGE_NAME="${{ secrets.DOCKER_HUB_USERNAME }}/temp-converter:$IMAGE_TAG"
+          echo "BUILD_TAG=$FULL_IMAGE_NAME" >> $GITHUB_ENV
+          docker build -t $FULL_IMAGE_NAME .
+
+      - name: Publish Container Image to Docker Hub Registry
+        run: |
+          docker push ${{ env.BUILD_TAG }}
+
+      - name: Interpolate Kubernetes Deployment Manifest
+        run: |
+          # Use sed to exchange our string placeholder for the exact image tag built in this pipeline run
+          sed -i "s|DOCKER_IMAGE_PLACEHOLDER|${{ env.BUILD_TAG }}|g" k8s/deployment.yaml
+
+      - name: Apply Deployments to Kubernetes Local Cluster
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+      - name: Block and Await Deployment Rollout Success
+        run: |
+          kubectl rollout status deployment/temperature-converter --timeout=90s
+
+      - name: Verify Live System Runtime and Service Status
+        run: |
+          kubectl get deployments
+          kubectl get pods
+          kubectl get services
+          echo "Pipeline run completed successfully. Verification endpoints are live."

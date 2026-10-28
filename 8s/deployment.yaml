@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temperature-converter
+  labels:
+    app: temp-converter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: temp-converter
+  template:
+    metadata:
+      labels:
+        app: temp-converter
+    spec:
+      containers:
+      - name: web-app
+        image: DOCKER_IMAGE_PLACEHOLDER
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
